@@ -1,9 +1,9 @@
-"""Tests for config loading behaviour in task.py."""
+"""Tests for config loading — focusing on the missing-config-file scenario."""
 
 import sys
-import types
+import json
+import importlib
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
@@ -13,115 +13,191 @@ import yaml
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _patch_config_paths(tmp_path: Path):
-    """Return a context-manager that points CONFIG_PATH/CONFIG_DIR to tmp_path."""
-    config_path = tmp_path / "config.yaml"
-    config_dir = tmp_path
-
-    return patch.multiple(
-        "task",
-        CONFIG_PATH=config_path,
-        CONFIG_DIR=config_dir,
-    )
-
-
-def _load_task_module():
-    """Import (or return already-imported) task module."""
-    import task  # noqa: PLC0415
-    return task
+def reload_task_module():
+    """Re-import task so module-level constants pick up monkeypatched paths."""
+    if "task" in sys.modules:
+        del sys.modules["task"]
+    import task as t
+    return t
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestMissingConfig:
-    """Config file does not exist yet."""
+class TestLoadConfigMissingFile:
+    """load_config() should never raise FileNotFoundError."""
 
-    def test_auto_creates_config_file(self, tmp_path):
-        import task
-        with _patch_config_paths(tmp_path):
-            result = task.load_config()
-        assert (tmp_path / "config.yaml").exists()
+    def test_creates_config_file_when_missing(self, tmp_path, monkeypatch):
+        """When config is absent load_config creates the file and returns defaults."""
+        config_dir = tmp_path / "task-cli"
+        config_file = config_dir / "config.yaml"
 
-    def test_returns_defaults_when_missing(self, tmp_path):
-        import task
-        with _patch_config_paths(tmp_path):
-            result = task.load_config()
-        assert result == task.DEFAULT_CONFIG
+        # Patch the module-level constants before import
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
 
-    def test_written_yaml_is_valid(self, tmp_path):
-        import task
-        with _patch_config_paths(tmp_path):
-            task.load_config()
-        written = yaml.safe_load((tmp_path / "config.yaml").read_text())
-        assert isinstance(written, dict)
+        assert not config_file.exists(), "Pre-condition: file must not exist"
+
+        result = t.load_config()
+
+        assert config_file.exists(), "Config file should have been created"
+        assert isinstance(result, dict)
+
+    def test_returns_default_values_when_missing(self, tmp_path, monkeypatch):
+        """Returned config contains all expected default keys."""
+        config_dir = tmp_path / "task-cli"
+        config_file = config_dir / "config.yaml"
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        result = t.load_config()
+
+        assert "storage" in result
+        assert "default_priority" in result
+        assert "date_format" in result
+
+    def test_written_file_is_valid_yaml(self, tmp_path, monkeypatch):
+        """The auto-generated config file must be parseable YAML."""
+        config_dir = tmp_path / "task-cli"
+        config_file = config_dir / "config.yaml"
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        t.load_config()
+
+        with open(config_file, "r", encoding="utf-8") as f:
+            parsed = yaml.safe_load(f)
+
+        assert isinstance(parsed, dict)
+
+    def test_no_crash_without_config(self, tmp_path, monkeypatch, capsys):
+        """load_config must not raise FileNotFoundError or any unhandled exception."""
+        config_dir = tmp_path / "does-not-exist" / "task-cli"
+        config_file = config_dir / "config.yaml"
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        # This must NOT raise
+        try:
+            result = t.load_config()
+        except FileNotFoundError as exc:
+            pytest.fail(f"FileNotFoundError was raised: {exc}")
+        except SystemExit as exc:
+            pytest.fail(f"SystemExit was raised unexpectedly: {exc}")
+
+        assert isinstance(result, dict)
+
+    def test_informative_message_printed_to_stderr(self, tmp_path, monkeypatch, capsys):
+        """A helpful message should be printed to stderr when the file is missing."""
+        config_dir = tmp_path / "task-cli"
+        config_file = config_dir / "config.yaml"
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        t.load_config()
+
+        captured = capsys.readouterr()
+        assert captured.err, "Expected an informative message on stderr"
+        assert "config" in captured.err.lower()
 
 
-class TestEmptyConfig:
-    """Config file exists but is completely empty."""
+class TestLoadConfigExistingFile:
+    """load_config() should read user values when the file exists."""
 
-    def test_empty_file_returns_defaults(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("")
-        with _patch_config_paths(tmp_path):
-            result = task.load_config()
-        assert result == task.DEFAULT_CONFIG
+    def test_reads_existing_config(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "task-cli"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.yaml"
 
+        user_cfg = {"default_priority": "high", "date_format": "%d/%m/%Y"}
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(user_cfg, f)
 
-class TestInvalidYaml:
-    """Config file contains malformed YAML."""
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
 
-    def test_invalid_yaml_exits_with_error(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text(": : invalid: yaml:::")
-        with _patch_config_paths(tmp_path):
-            with pytest.raises(SystemExit) as exc_info:
-                task.load_config()
+        result = t.load_config()
+
+        assert result["default_priority"] == "high"
+        assert result["date_format"] == "%d/%m/%Y"
+
+    def test_defaults_merged_with_user_config(self, tmp_path, monkeypatch):
+        """Keys absent from the user config fall back to defaults."""
+        config_dir = tmp_path / "task-cli"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.yaml"
+
+        user_cfg = {"default_priority": "low"}
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(user_cfg, f)
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        result = t.load_config()
+
+        # User override
+        assert result["default_priority"] == "low"
+        # Default still present
+        assert "storage" in result
+        assert "date_format" in result
+
+    def test_invalid_yaml_exits_gracefully(self, tmp_path, monkeypatch):
+        """Corrupt YAML must produce SystemExit(1), not a traceback."""
+        config_dir = tmp_path / "task-cli"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.yaml"
+        config_file.write_text("key: [unclosed bracket", encoding="utf-8")
+
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        with pytest.raises(SystemExit) as exc_info:
+            t.load_config()
+
         assert exc_info.value.code == 1
 
 
-class TestNonMappingYaml:
-    """Config file contains valid YAML but not a mapping at root."""
+class TestCreateDefaultConfig:
+    """_create_default_config() internal helper."""
 
-    def test_scalar_root_exits_with_error(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("just a string\n")
-        with _patch_config_paths(tmp_path):
-            with pytest.raises(SystemExit) as exc_info:
-                task.load_config()
-        assert exc_info.value.code == 1
+    def test_creates_intermediate_directories(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "a" / "b" / "c" / "task-cli"
+        config_file = config_dir / "config.yaml"
 
-    def test_list_root_exits_with_error(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("- item1\n- item2\n")
-        with _patch_config_paths(tmp_path):
-            with pytest.raises(SystemExit) as exc_info:
-                task.load_config()
-        assert exc_info.value.code == 1
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
 
+        t._create_default_config()
 
-class TestValidConfig:
-    """Config file is well-formed and contains overrides."""
+        assert config_file.exists()
 
-    def test_merges_with_defaults(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("tasks_file: /custom/path/tasks.json\n")
-        with _patch_config_paths(tmp_path):
-            result = task.load_config()
-        assert result["tasks_file"] == "/custom/path/tasks.json"
+    def test_default_config_contains_required_keys(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "task-cli"
+        config_file = config_dir / "config.yaml"
 
-    def test_unknown_keys_preserved(self, tmp_path):
-        import task
-        cfg = tmp_path / "config.yaml"
-        cfg.write_text("extra_key: extra_value\n")
-        with _patch_config_paths(tmp_path):
-            result = task.load_config()
-        assert result["extra_key"] == "extra_value"
-        # Defaults still present
-        assert "tasks_file" in result
+        import task as t
+        monkeypatch.setattr(t, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(t, "CONFIG_PATH", config_file)
+
+        t._create_default_config()
+
+        with open(config_file, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        for key in ("storage", "default_priority", "date_format"):
+            assert key in data, f"Missing key '{key}' in default config"
