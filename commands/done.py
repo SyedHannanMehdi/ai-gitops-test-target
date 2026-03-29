@@ -1,31 +1,37 @@
-"""Command: mark a task as done."""
-
 import json
+import os
 
 from utils.paths import get_tasks_file
-from utils.validation import validate_task_file, validate_task_id
+from utils.validation import validate_task_id
 
 
-def mark_done(task_id: str) -> None:
-    """Mark the task with the given ID as done.
+def mark_done(task_id: int) -> None:
+    """Mark the task identified by *task_id* (its stored ``id`` field) as done.
 
-    Args:
-        task_id: The string representation of the task's integer ID.
+    Prints a friendly message when the tasks file is missing rather than
+    raising an exception — preserving the original UX.  Task lookup uses the
+    stored ``id`` field, not the list index, to preserve persistence semantics.
     """
-    tid = validate_task_id(task_id)
+    filepath = get_tasks_file()
 
-    tasks_file = get_tasks_file()
-    validate_task_file(tasks_file)
+    # Non-exceptional handling for a missing file (original behaviour).
+    if not os.path.exists(filepath):
+        print("No tasks found.")
+        return
 
-    with open(tasks_file, "r") as f:
+    with open(filepath, "r") as f:
         tasks = json.load(f)
 
-    for task in tasks:
-        if task["id"] == tid:
-            task["done"] = True
-            with open(tasks_file, "w") as f:
-                json.dump(tasks, f, indent=2)
-            print(f"Task #{tid} marked as done.")
-            return
+    # Validate that the requested id actually exists.
+    validate_task_id(task_id, tasks)
 
-    print(f"Task #{tid} not found.")
+    # Update the matching task by its stored id (not by list index).
+    for task in tasks:
+        if task["id"] == task_id:
+            task["done"] = True
+            break
+
+    with open(filepath, "w") as f:
+        json.dump(tasks, f, indent=2)
+
+    print(f"Task {task_id} marked as done.")
