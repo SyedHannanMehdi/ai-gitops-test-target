@@ -1,33 +1,31 @@
+"""Command: mark a task as done."""
+
 import json
 
 from utils.paths import get_tasks_file
+from utils.validation import validate_task_file, validate_task_id
 
 
-def mark_done(task_id: int) -> None:
-    """Mark the task with the given stored ID as done.
+def mark_done(task_id: str) -> None:
+    """Mark the task with the given ID as done.
 
-    Preserves previous behaviour:
-    - Prints a friendly message and returns (without raising) when the tasks
-      file does not exist.
-    - Looks up tasks by their stored ``id`` field, not by list index.
+    Args:
+        task_id: The string representation of the task's integer ID.
     """
-    filepath = get_tasks_file()
+    tid = validate_task_id(task_id)
 
-    # Preserve previous behaviour: missing file → friendly message, no exception.
-    try:
-        with open(filepath, "r") as f:
-            tasks = json.load(f)
-    except FileNotFoundError:
-        print("No tasks found.")
-        return
+    tasks_file = get_tasks_file()
+    validate_task_file(tasks_file)
 
-    # ID-based lookup — matches the original persistence semantics.
+    with open(tasks_file, "r") as f:
+        tasks = json.load(f)
+
     for task in tasks:
-        if task.get("id") == task_id:
+        if task["id"] == tid:
             task["done"] = True
-            with open(filepath, "w") as f:
+            with open(tasks_file, "w") as f:
                 json.dump(tasks, f, indent=2)
-            print(f"Task {task_id} marked as done.")
+            print(f"Task #{tid} marked as done.")
             return
 
-    print(f"Task {task_id} not found.")
+    print(f"Task #{tid} not found.")
