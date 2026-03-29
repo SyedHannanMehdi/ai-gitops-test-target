@@ -1,0 +1,33 @@
+{
+  "name": "ai-gitops-test-target",
+  "version": "1.0.0",
+  "description": "Simple task manager CLI",
+  "main": "dist/index.js",
+  "bin": {
+    "tasks": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "test": "jest --testPathPattern='src/__tests__'",
+    "test:coverage": "jest --coverage --testPathPattern='src/__tests__'"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.11.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ]
+  }
+}
