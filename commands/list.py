@@ -1,18 +1,24 @@
-"""Command: list all tasks."""
-
 import json
+import os
 
 from utils.paths import get_tasks_file
 from utils.validation import validate_task_file
 
 
 def list_tasks() -> None:
-    """List all tasks, showing their ID, status, and description."""
-    tasks_file = get_tasks_file()
+    """Print all tasks to stdout.
 
-    validate_task_file(tasks_file)
+    If the tasks file does not exist a friendly message is printed and the
+    command returns without error — preserving the original UX.
+    """
+    filepath = get_tasks_file()
 
-    with open(tasks_file, "r") as f:
+    # Non-exceptional handling for a missing file (original behaviour).
+    if not os.path.exists(filepath):
+        print("No tasks found.")
+        return
+
+    with open(filepath, "r") as f:
         tasks = json.load(f)
 
     if not tasks:
@@ -20,5 +26,5 @@ def list_tasks() -> None:
         return
 
     for task in tasks:
-        status = "✓" if task.get("done") else "✗"
-        print(f"[{status}] #{task['id']}: {task['description']}")
+        status = "x" if task.get("done") else " "
+        print(f"[{status}] {task['id']}: {task['description']}")
