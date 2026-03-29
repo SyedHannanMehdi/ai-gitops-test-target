@@ -1,36 +1,41 @@
-"""Shared validation helpers used across command modules."""
-
+import json
 import os
-from typing import List
 
 
-def validate_description(description: str) -> None:
-    """Validate that a task description is non-empty.
+def validate_description(description: str) -> str:
+    """Validate and normalize a task description.
+
+    The description must be non-empty (after stripping whitespace) and no longer
+    than 200 characters.
+
+    Returns the stripped description string.
 
     Raises:
-        ValueError: If *description* is empty or contains only whitespace.
+        ValueError: if the description is empty or exceeds 200 characters.
     """
-    if not description or not description.strip():
-        raise ValueError("Task description cannot be empty.")
+    stripped = description.strip()
+    if not stripped:
+        raise ValueError("Description cannot be empty.")
+    if len(stripped) > 200:
+        raise ValueError("Description cannot exceed 200 characters.")
+    return stripped
 
 
 def validate_task_file(filepath: str) -> None:
-    """Validate that the tasks file exists at *filepath*.
+    """Check that the tasks file exists.
 
     Raises:
-        FileNotFoundError: If the file does not exist.
+        FileNotFoundError: if *filepath* does not exist.
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Tasks file not found: {filepath}")
 
 
-def validate_task_id(task_id: int, tasks: List[dict]) -> None:
-    """Validate that *task_id* refers to an existing task in *tasks*.
+def validate_task_id(task_id: int) -> None:
+    """Validate that a task ID is a positive integer.
 
     Raises:
-        ValueError: If *task_id* is not a valid index into *tasks*.
+        ValueError: if *task_id* is not a positive integer.
     """
-    if task_id < 1 or task_id > len(tasks):
-        raise ValueError(
-            f"Invalid task ID: {task_id}. Must be between 1 and {len(tasks)}."
-        )
+    if not isinstance(task_id, int) or task_id <= 0:
+        raise ValueError(f"Task ID must be a positive integer, got: {task_id!r}")
