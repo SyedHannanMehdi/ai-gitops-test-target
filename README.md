@@ -1,8 +1,6 @@
 # ai-gitops-test-target
 
-A simple CLI task manager written in TypeScript with `--json` output support for scripting and automation.
-
----
+A simple CLI todo manager built with TypeScript and Commander.js.
 
 ## Installation
 
@@ -11,134 +9,105 @@ npm install
 npm run build
 ```
 
----
-
 ## Usage
 
-You can run the CLI in three ways:
+### Add a todo
 
-### 1. During development (via ts-node)
 ```bash
-npx ts-node src/index.ts <command> [options]
+todo add "Buy groceries"
+# Added: "Buy groceries" (id: 1)
 ```
 
-### 2. After building (via Node.js)
+### List todos
+
 ```bash
-node dist/index.js <command> [options]
+todo list
+# [ ] 1. Buy groceries
+# [x] 2. Write tests
 ```
 
-### 3. As a global `tasks` command
-
-To use the short `tasks` command directly in your terminal, install the package globally or link it locally:
+### Mark a todo as done
 
 ```bash
-# Option A: link locally (recommended for development)
-npm link
-
-# Option B: install globally from a published package
-npm install -g ai-gitops-test-target
-```
-
-After linking/installing, the `tasks` binary will be available on your PATH.
-
----
-
-## Commands
-
-### `add <title>`
-
-Add a new task.
-
-```bash
-tasks add "Buy groceries"
-# or without global install:
-node dist/index.js add "Buy groceries"
-```
-
-### `list`
-
-List all tasks.
-
-```bash
-tasks list
-# or:
-node dist/index.js list
-```
-
-### `done <id>`
-
-Mark a task as done by its integer ID.
-
-```bash
-tasks done 1
-# or:
-node dist/index.js done 1
+todo done 1
+# Marked as done: "Buy groceries" (id: 1)
 ```
 
 ---
 
-## JSON Output (`--json`)
+## JSON Output (`--json` flag)
 
-Every command supports a `--json` flag that prints structured JSON to stdout, making it easy to use in scripts and pipelines.
+All commands support the `--json` flag for machine-readable output, ideal for scripting and automation.
 
 ### `add --json`
 
 ```bash
-tasks add "Deploy to production" --json
+todo add "Buy groceries" --json
 ```
-
-Output schema:
 
 ```json
 {
-  "id": 1,
-  "title": "Deploy to production",
-  "done": false,
-  "createdAt": "2024-01-01T00:00:00.000Z"
+  "success": true,
+  "todo": {
+    "id": 1,
+    "text": "Buy groceries",
+    "done": false,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
 }
 ```
 
 ### `list --json`
 
 ```bash
-tasks list --json
+todo list --json
 ```
 
-Output schema:
-
 ```json
-[
-  {
-    "id": 1,
-    "title": "Deploy to production",
-    "done": false,
-    "createdAt": "2024-01-01T00:00:00.000Z"
-  }
-]
+{
+  "todos": [
+    {
+      "id": 1,
+      "text": "Buy groceries",
+      "done": false,
+      "createdAt": "2024-01-15T10:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "text": "Write tests",
+      "done": true,
+      "createdAt": "2024-01-15T10:31:00.000Z"
+    }
+  ]
+}
 ```
 
 ### `done --json`
 
 ```bash
-tasks done 1 --json
+todo done 1 --json
 ```
-
-Output schema (updated task):
 
 ```json
 {
-  "id": 1,
-  "title": "Deploy to production",
-  "done": true,
-  "createdAt": "2024-01-01T00:00:00.000Z"
+  "success": true,
+  "todo": {
+    "id": 1,
+    "text": "Buy groceries",
+    "done": true,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
 }
 ```
 
-Error schema (task not found or invalid ID):
+### Error responses (with `--json`)
+
+When an error occurs with `--json` enabled, the output will be:
 
 ```json
 {
-  "error": "Task #99 not found"
+  "success": false,
+  "error": "Todo with id 99 not found"
 }
 ```
 
@@ -146,64 +115,50 @@ Error schema (task not found or invalid ID):
 
 ## Scripting Examples
 
-All examples below assume `tasks` is on your PATH (via `npm link` or global install). Replace `tasks` with `node dist/index.js` if running locally without linking.
-
-### Add a task and capture its ID
+### Get the ID of a newly added todo
 
 ```bash
-TASK_ID=$(tasks add "Run tests" --json | jq -r '.id')
-echo "Created task $TASK_ID"
+ID=$(todo add "Deploy to production" --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d).todo.id)")
+echo "Created todo with id: $ID"
 ```
 
-### List only incomplete tasks
+### Count pending todos
 
 ```bash
-tasks list --json | jq '[.[] | select(.done == false)]'
+todo list --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); const t=JSON.parse(d).todos; console.log(t.filter(x=>!x.done).length + ' pending')"
 ```
 
-### Mark a task done in a script
+### Mark all todos as done in a script
 
 ```bash
-tasks done "$TASK_ID" --json | jq '.done'
+for id in $(todo list --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).todos.forEach(t=>console.log(t.id))"); do
+  todo done $id --json
+done
 ```
-
-### Check for errors
-
-```bash
-result=$(tasks done 999 --json)
-if echo "$result" | jq -e '.error' > /dev/null 2>&1; then
-  echo "Error: $(echo "$result" | jq -r '.error')"
-fi
-```
-
----
-
-## Data Storage
-
-Tasks are stored in `~/.tasks.json`. The file is created automatically on first use.
-
-If the file is missing, empty, or corrupted, the CLI will emit a warning and fall back to an empty task store rather than crashing.
 
 ---
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
 # Run tests
 npm test
 
 # Run tests with coverage
-npm run coverage
+npm run test:coverage
 
-# Build TypeScript
+# Build
 npm run build
+
+# Run in dev mode (no build needed)
+npm run dev -- add "Hello world"
 ```
 
----
+## Todo Schema
 
-## License
-
-MIT
+| Field       | Type      | Description                        |
+|-------------|-----------|-----------------------------------|
+| `id`        | `number`  | Unique auto-incrementing ID        |
+| `text`      | `string`  | The todo description               |
+| `done`      | `boolean` | Whether the todo is completed      |
+| `createdAt` | `string`  | ISO 8601 creation timestamp        |
