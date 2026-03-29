@@ -1,6 +1,6 @@
 # task-cli
 
-A simple task management CLI written in Python.
+A simple command-line task manager.
 
 ## Installation
 
@@ -11,36 +11,44 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# List all tasks
+python task.py add "Buy groceries"
 python task.py list
-
-# Add a task
-python task.py add Buy milk
+python task.py done 1
 ```
 
 ## Configuration
 
-Configuration is stored at `~/.config/task-cli/config.yaml`.
+task-cli stores its configuration at:
 
-If the file does **not** exist, `task-cli` will automatically create it with
-sensible defaults the first time you run any command — no manual setup needed.
+```
+~/.config/task-cli/config.yaml
+```
 
-### Default config
+If the file does not exist, it is **automatically created** with sensible defaults on first run.
+
+### Default configuration
 
 ```yaml
-date_format: '%Y-%m-%d'
+tasks_file: /home/<your-username>/.config/task-cli/tasks.json
 default_priority: medium
-storage: ~/.local/share/task-cli/tasks.json
 ```
 
-| Key | Description | Default |
-|---|---|---|
-| `storage` | Path to the JSON file that stores tasks | `~/.local/share/task-cli/tasks.json` |
-| `default_priority` | Priority assigned to new tasks (`low` / `medium` / `high`) | `medium` |
-| `date_format` | strftime format used when displaying dates | `%Y-%m-%d` |
+> **Note:** `tasks_file` is written as an absolute path (e.g. `/home/alice/.config/task-cli/tasks.json`).
+> The `~` shorthand is **not** used in the generated file so that the path is unambiguous across tools.
 
-## Running Tests
+### Configuration keys
 
-```bash
-pytest tests/
-```
+| Key | Default (expanded) | Description |
+|-----|--------------------|-------------|
+| `tasks_file` | `$HOME/.config/task-cli/tasks.json` | Where tasks are stored |
+| `default_priority` | `medium` | Priority assigned to new tasks when none is specified |
+
+### Error handling
+
+| Situation | Behaviour |
+|-----------|-----------|
+| Config file missing | Auto-created with defaults; execution continues normally |
+| Config file is empty | Defaults are used; execution continues normally |
+| Config file contains invalid YAML | Friendly error message printed to stderr; exit code 1 |
+| Config file root is not a YAML mapping | Friendly error message printed to stderr; exit code 1 |
+| Unknown CLI command | Friendly error message printed to stderr; exit code 1 |
