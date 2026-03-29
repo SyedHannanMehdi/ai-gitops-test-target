@@ -1,139 +1,138 @@
 # ai-gitops-test-target
 
-A simple CLI todo manager built with TypeScript and Commander.js.
+A simple file-backed CLI task manager with `--json` output for scripting and automation.
+
+---
 
 ## Installation
 
 ```bash
 npm install
-npm run build
-```
-
-## Usage
-
-### Add a todo
-
-```bash
-todo add "Buy groceries"
-# Added: "Buy groceries" (id: 1)
-```
-
-### List todos
-
-```bash
-todo list
-# [ ] 1. Buy groceries
-# [x] 2. Write tests
-```
-
-### Mark a todo as done
-
-```bash
-todo done 1
-# Marked as done: "Buy groceries" (id: 1)
+npm run build        # compiles TypeScript → dist/
 ```
 
 ---
 
-## JSON Output (`--json` flag)
+## Running the CLI
 
-All commands support the `--json` flag for machine-readable output, ideal for scripting and automation.
+There are three ways to invoke the task manager:
 
-### `add --json`
-
-```bash
-todo add "Buy groceries" --json
-```
-
-```json
-{
-  "success": true,
-  "todo": {
-    "id": 1,
-    "text": "Buy groceries",
-    "done": false,
-    "createdAt": "2024-01-15T10:30:00.000Z"
-  }
-}
-```
-
-### `list --json`
+### 1. After building (recommended for production use)
 
 ```bash
-todo list --json
+node dist/index.js <command> [options]
 ```
 
-```json
-{
-  "todos": [
-    {
-      "id": 1,
-      "text": "Buy groceries",
-      "done": false,
-      "createdAt": "2024-01-15T10:30:00.000Z"
-    },
-    {
-      "id": 2,
-      "text": "Write tests",
-      "done": true,
-      "createdAt": "2024-01-15T10:31:00.000Z"
-    }
-  ]
-}
-```
-
-### `done --json`
+### 2. Directly with ts-node (no build step required)
 
 ```bash
-todo done 1 --json
+npx ts-node src/index.ts <command> [options]
 ```
 
-```json
-{
-  "success": true,
-  "todo": {
-    "id": 1,
-    "text": "Buy groceries",
-    "done": true,
-    "createdAt": "2024-01-15T10:30:00.000Z"
-  }
-}
+### 3. As a global `tasks` binary
+
+If you want to use the short `tasks` alias, link the package globally first:
+
+```bash
+npm link          # or: npm install -g .
 ```
 
-### Error responses (with `--json`)
+Then you can call:
 
-When an error occurs with `--json` enabled, the output will be:
+```bash
+tasks <command> [options]
+```
 
-```json
-{
-  "success": false,
-  "error": "Todo with id 99 not found"
-}
+> **Note:** Without `npm link` / `npm install -g`, the `tasks` binary is not on your PATH.
+> Use `node dist/index.js …` or `npx ts-node src/index.ts …` instead.
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `add <title>` | Add a new task |
+| `list` | List all tasks |
+| `done <id>` | Mark task `<id>` as done |
+
+Every command accepts a `--json` flag for machine-readable output.
+
+---
+
+## Usage examples
+
+### Plain text output
+
+```bash
+# After npm link / npm install -g
+tasks add "Write unit tests"
+tasks list
+tasks done 1
+
+# Without global install
+node dist/index.js add "Write unit tests"
+node dist/index.js list
+node dist/index.js done 1
+```
+
+### JSON output (`--json`)
+
+```bash
+node dist/index.js add "Deploy to staging" --json
+# {
+#   "id": 1,
+#   "title": "Deploy to staging",
+#   "done": false,
+#   "createdAt": "2024-01-15T10:30:00.000Z"
+# }
+
+node dist/index.js list --json
+# [
+#   { "id": 1, "title": "Deploy to staging", "done": false, "createdAt": "..." }
+# ]
+
+node dist/index.js done 1 --json
+# {
+#   "id": 1,
+#   "title": "Deploy to staging",
+#   "done": true,
+#   "createdAt": "..."
+# }
+```
+
+### Scripting example (bash)
+
+```bash
+# Add a task and capture its id
+TASK=$(node dist/index.js add "Run smoke tests" --json)
+ID=$(echo "$TASK" | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).id))")
+
+# Mark it done
+node dist/index.js done "$ID" --json
 ```
 
 ---
 
-## Scripting Examples
+## JSON schemas
 
-### Get the ID of a newly added todo
+### Task object
 
-```bash
-ID=$(todo add "Deploy to production" --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d).todo.id)")
-echo "Created todo with id: $ID"
+```jsonc
+{
+  "id":        1,           // integer — unique task identifier
+  "title":     "string",    // task description
+  "done":      false,       // boolean — completion status
+  "createdAt": "ISO 8601"   // creation timestamp
+}
 ```
 
-### Count pending todos
+### Error object (non-zero exit)
 
-```bash
-todo list --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); const t=JSON.parse(d).todos; console.log(t.filter(x=>!x.done).length + ' pending')"
-```
-
-### Mark all todos as done in a script
-
-```bash
-for id in $(todo list --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); JSON.parse(d).todos.forEach(t=>console.log(t.id))"); do
-  todo done $id --json
-done
+```jsonc
+{
+  "error": "Human-readable error message"
+}
 ```
 
 ---
@@ -141,24 +140,9 @@ done
 ## Development
 
 ```bash
-# Run tests
-npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Build
-npm run build
-
-# Run in dev mode (no build needed)
-npm run dev -- add "Hello world"
+npm test            # run Jest test suite
+npm run coverage    # run tests with coverage report
+npm run build       # compile TypeScript
 ```
 
-## Todo Schema
-
-| Field       | Type      | Description                        |
-|-------------|-----------|-----------------------------------|
-| `id`        | `number`  | Unique auto-incrementing ID        |
-| `text`      | `string`  | The todo description               |
-| `done`      | `boolean` | Whether the todo is completed      |
-| `createdAt` | `string`  | ISO 8601 creation timestamp        |
+Data is stored in `~/.tasks.json`.
