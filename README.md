@@ -1,6 +1,8 @@
-# ai-gitops-test-target
+# AI GitOps Test Target — Task Manager CLI
 
-A simple task manager CLI with human-readable and JSON output support.
+A simple command-line task manager with `--json` output support for scripting and automation.
+
+---
 
 ## Installation
 
@@ -9,15 +11,37 @@ npm install
 npm run build
 ```
 
-## Usage
+---
+
+## Running the CLI
+
+You can run the CLI in three ways:
+
+### 1. Directly with `ts-node` (development)
 
 ```bash
-# Using ts-node directly
 npx ts-node src/index.ts <command> [options]
+```
 
-# Or after building
+### 2. From the compiled build
+
+```bash
 node dist/index.js <command> [options]
 ```
+
+### 3. As a global `tasks` binary
+
+To use the short `tasks` command shown in the examples below, link the package globally:
+
+```bash
+npm link
+```
+
+After linking, the `tasks` binary will be available on your PATH. You can also install globally from a published package with `npm install -g <package-name>`.
+
+> **Note:** All examples below use the `tasks` shorthand. If you haven't run `npm link`, substitute `npx ts-node src/index.ts` or `node dist/index.js` in place of `tasks`.
+
+---
 
 ## Commands
 
@@ -26,141 +50,143 @@ node dist/index.js <command> [options]
 Add a new task.
 
 ```bash
-# Human-readable output
-$ tasks add "Buy groceries"
-Added task #1: Buy groceries
+tasks add "Buy groceries"
+# Added: [ ] #1 Buy groceries
 
-# JSON output
-$ tasks add "Buy groceries" --json
+tasks add "Buy groceries" --json
+```
+
+**JSON output:**
+```json
 {
   "id": 1,
   "title": "Buy groceries",
   "done": false,
-  "createdAt": "2024-01-15T10:30:00.000Z"
+  "createdAt": "2024-01-01T00:00:00.000Z"
 }
 ```
+
+---
 
 ### `list`
 
 List all tasks.
 
 ```bash
-# Human-readable output
-$ tasks list
-[ ] #1: Buy groceries
-[x] #2: Write tests
-[ ] #3: Deploy to production
+tasks list
+# [ ] #1 Buy groceries
+# [x] #2 Walk the dog
 
-# JSON output
-$ tasks list --json
+tasks list --json
+```
+
+**JSON output:**
+```json
 [
   {
     "id": 1,
     "title": "Buy groceries",
     "done": false,
-    "createdAt": "2024-01-15T10:30:00.000Z"
+    "createdAt": "2024-01-01T00:00:00.000Z"
   },
   {
     "id": 2,
-    "title": "Write tests",
+    "title": "Walk the dog",
     "done": true,
-    "createdAt": "2024-01-15T10:31:00.000Z"
-  },
-  {
-    "id": 3,
-    "title": "Deploy to production",
-    "done": false,
-    "createdAt": "2024-01-15T10:32:00.000Z"
+    "createdAt": "2024-01-01T01:00:00.000Z"
   }
 ]
-
-# Empty list
-$ tasks list --json
-[]
 ```
+
+---
 
 ### `done <id>`
 
 Mark a task as done.
 
 ```bash
-# Human-readable output
-$ tasks done 1
-Marked task #1 as done: Buy groceries
+tasks done 1
+# Marked done: [x] #1 Buy groceries
 
-# JSON output
-$ tasks done 1 --json
+tasks done 1 --json
+```
+
+**JSON output:**
+```json
 {
   "id": 1,
   "title": "Buy groceries",
   "done": true,
-  "createdAt": "2024-01-15T10:30:00.000Z"
-}
-
-# Error (task not found) — JSON output
-$ tasks done 999 --json
-{
-  "error": "Task #999 not found"
+  "createdAt": "2024-01-01T00:00:00.000Z"
 }
 ```
 
-## Options
+**Error output (task not found or invalid ID):**
+```json
+{
+  "error": "Task #99 not found"
+}
+```
 
-| Flag     | Description                          | Commands          |
-|----------|--------------------------------------|-------------------|
-| `--json` | Output result as JSON                | add, list, done   |
-| `--help` | Display help for a command           | all               |
+---
 
-## JSON Schema
+## JSON Schemas
 
 ### Task object
 
-```json
-{
-  "id": 1,
-  "title": "string",
-  "done": false,
-  "createdAt": "ISO 8601 date string"
-}
-```
+| Field       | Type    | Description                         |
+|-------------|---------|-------------------------------------|
+| `id`        | number  | Unique integer task ID              |
+| `title`     | string  | Task description                    |
+| `done`      | boolean | Whether the task is completed       |
+| `createdAt` | string  | ISO 8601 creation timestamp         |
 
 ### Error object
 
-```json
-{
-  "error": "Human-readable error message"
-}
-```
+| Field   | Type   | Description          |
+|---------|--------|----------------------|
+| `error` | string | Human-readable error |
+
+---
 
 ## Scripting Examples
+
+All examples below assume `tasks` is on your PATH (via `npm link` or global install).  
+Replace `tasks` with `node dist/index.js` if running from the build directly.
 
 ### Add a task and capture its ID
 
 ```bash
-ID=$(tasks add "Deploy hotfix" --json | jq -r '.id')
+ID=$(tasks add "Deploy to production" --json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).id))")
 echo "Created task $ID"
 ```
 
 ### List only incomplete tasks
 
 ```bash
-tasks list --json | jq '[.[] | select(.done == false)]'
+tasks list --json | node -e "
+  process.stdin.resume();
+  let d = '';
+  process.stdin.on('data', c => d += c);
+  process.stdin.on('end', () => {
+    const tasks = JSON.parse(d).filter(t => !t.done);
+    console.log(JSON.stringify(tasks, null, 2));
+  });
+"
 ```
 
-### Mark all tasks as done
+### Mark a task done and check success
 
 ```bash
-tasks list --json | jq -r '.[].id' | xargs -I{} tasks done {}
-```
-
-### Check if a task exists
-
-```bash
-TASK=$(tasks list --json | jq '.[] | select(.id == 1)')
-if [ -z "$TASK" ]; then
-  echo "Task not found"
+result=$(tasks done 1 --json)
+if echo "$result" | grep -q '"error"'; then
+  echo "Failed: $result"
+else
+  echo "Success"
 fi
 ```
+
+---
 
 ## Development
 
@@ -169,19 +195,14 @@ fi
 npm test
 
 # Run tests with coverage
-npm run test:coverage
+npm run coverage
 
 # Build
 npm run build
 ```
 
+---
+
 ## Data Storage
 
-Tasks are stored in `~/.tasks.json` as a JSON file. The format is:
-
-```json
-{
-  "tasks": [...],
-  "nextId": 4
-}
-```
+Tasks are stored in `~/.tasks.json`. The file is created automatically on first use.
