@@ -1,6 +1,6 @@
 # task-cli
 
-A simple command-line task manager written in Python.
+A simple command-line task manager.
 
 ## Installation
 
@@ -11,56 +11,49 @@ pip install pyyaml
 ## Usage
 
 ```bash
-# List all tasks
+python task.py add "Buy groceries"
 python task.py list
-
-# Add a task
-python task.py add Buy groceries
-python task.py add --priority high Fix production bug
+python task.py done 1
 ```
 
 ## Configuration
 
-task-cli stores its configuration at:
+task-cli reads its configuration from:
 
 ```
 ~/.config/task-cli/config.yaml
 ```
 
-**If the file does not exist, task-cli will create it automatically** with sensible
-defaults the first time you run any command. You will see a one-time informational
-message telling you where the file was created.
+If the file does not exist, it is **auto-created** the first time you run any command.
 
 ### Default configuration
 
 ```yaml
-date_format: '%Y-%m-%d'
-default_priority: medium
-editor: nano          # or the value of $EDITOR
 tasks_file: ~/.config/task-cli/tasks.json
 ```
 
-### Configuration options
+> **Note:** The `tasks_file` value is stored as written above (using `~` for the home directory). It is expanded to an absolute path at runtime, so you can use either `~`-prefixed or absolute paths in your own config.
+
+### Configuration keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `tasks_file` | `~/.config/task-cli/tasks.json` | Path where tasks are stored |
-| `default_priority` | `medium` | Priority used when `--priority` is omitted (`low`, `medium`, `high`) |
-| `date_format` | `%Y-%m-%d` | `strftime` format for displaying dates |
-| `editor` | `$EDITOR` or `nano` | Editor launched for long-form task descriptions |
+| `tasks_file` | `~/.config/task-cli/tasks.json` | Path to the JSON file where tasks are stored. Supports `~` expansion. |
 
-## Error handling
+### Error-handling matrix
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Config file missing | Created automatically with defaults; one-time message printed |
-| Config file is empty | Defaults used silently |
-| Config file contains invalid YAML | Friendly error printed; exit code 1 |
-| Config directory not writable | Friendly error printed; exit code 1 |
+| Config file missing | Auto-created with defaults; a notice is printed to stderr. |
+| Config file is empty | Defaults are used silently. |
+| Config file has invalid YAML | Error message printed to stderr; exit code 1. |
+| Config root is not a YAML mapping | Error message printed to stderr; exit code 1. |
+| Config file unreadable (permissions) | OS error message printed to stderr; exit code 1. |
 
-## Running tests
+## Commands
 
-```bash
-pip install pytest pyyaml
-pytest tests/
-```
+| Command | Description |
+|---------|-------------|
+| `task add <description>` | Add a new task. |
+| `task list` | List all tasks. |
+| `task done <id>` | Mark a task as done. |
