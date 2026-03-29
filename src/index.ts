@@ -5,19 +5,19 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-const DATA_FILE = path.join(os.homedir(), ".tasks.json");
-
-interface Task {
+export interface Task {
   id: number;
   title: string;
   done: boolean;
   createdAt: string;
 }
 
-interface TaskStore {
+export interface TaskStore {
   tasks: Task[];
   nextId: number;
 }
+
+export const DATA_FILE = path.join(os.homedir(), ".tasks.json");
 
 export function loadTasks(): TaskStore {
   if (!fs.existsSync(DATA_FILE)) {
@@ -66,16 +66,17 @@ export function saveTasks(store: TaskStore): void {
 
 export function formatTask(task: Task): string {
   const status = task.done ? "[x]" : "[ ]";
-  return `${status} #${task.id} ${task.title}`;
+  return `${status} #${task.id} ${task.title} (created: ${task.createdAt})`;
 }
 
 const program = new Command();
 
 program
   .name("tasks")
-  .description("A simple CLI task manager")
+  .description("A simple CLI task manager with optional JSON output")
   .version("1.0.0");
 
+// add command
 program
   .command("add <title>")
   .description("Add a new task")
@@ -99,6 +100,7 @@ program
     }
   });
 
+// list command
 program
   .command("list")
   .description("List all tasks")
@@ -117,9 +119,10 @@ program
     }
   });
 
+// done command
 program
   .command("done <id>")
-  .description("Mark a task as done")
+  .description("Mark a task as done by ID")
   .option("--json", "Output result as JSON")
   .action((id: string, options: { json?: boolean }) => {
     const taskId = parseInt(id, 10);
