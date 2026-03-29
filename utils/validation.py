@@ -1,41 +1,55 @@
-import json
+"""Shared validation functions for the task manager application."""
+
 import os
 
 
-def validate_description(description: str) -> str:
-    """Validate and normalize a task description.
+def validate_description(description: str) -> None:
+    """Validate a task description.
 
-    The description must be non-empty (after stripping whitespace) and no longer
-    than 200 characters.
-
-    Returns the stripped description string.
+    Args:
+        description: The task description string to validate.
 
     Raises:
-        ValueError: if the description is empty or exceeds 200 characters.
+        ValueError: If the description is empty or contains only whitespace.
     """
-    stripped = description.strip()
-    if not stripped:
-        raise ValueError("Description cannot be empty.")
-    if len(stripped) > 200:
-        raise ValueError("Description cannot exceed 200 characters.")
-    return stripped
+    if not description or not description.strip():
+        raise ValueError("Task description cannot be empty.")
 
 
-def validate_task_file(filepath: str) -> None:
-    """Check that the tasks file exists.
+def validate_task_file(tasks_file: str) -> None:
+    """Validate that the tasks file exists.
+
+    Args:
+        tasks_file: Path to the tasks JSON file.
 
     Raises:
-        FileNotFoundError: if *filepath* does not exist.
+        FileNotFoundError: If the tasks file does not exist.
     """
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"Tasks file not found: {filepath}")
+    if not os.path.exists(tasks_file):
+        raise FileNotFoundError(
+            f"Tasks file '{tasks_file}' not found. "
+            "Add a task first with: task add <description>"
+        )
 
 
-def validate_task_id(task_id: int) -> None:
+def validate_task_id(task_id: str) -> int:
     """Validate that a task ID is a positive integer.
 
+    Args:
+        task_id: The task ID string to validate.
+
+    Returns:
+        The task ID as an integer.
+
     Raises:
-        ValueError: if *task_id* is not a positive integer.
+        ValueError: If the task ID is not a valid positive integer.
     """
-    if not isinstance(task_id, int) or task_id <= 0:
-        raise ValueError(f"Task ID must be a positive integer, got: {task_id!r}")
+    try:
+        tid = int(task_id)
+    except (ValueError, TypeError):
+        raise ValueError(f"Task ID must be a positive integer, got: '{task_id}'")
+
+    if tid <= 0:
+        raise ValueError(f"Task ID must be a positive integer, got: {tid}")
+
+    return tid
