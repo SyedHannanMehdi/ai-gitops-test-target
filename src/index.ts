@@ -1,129 +1,179 @@
-#!/usr/bin/env node
-
-import { Command } from "commander";
 import * as fs from "fs";
-import * as path from "path";
 import * as os from "os";
+import * as path from "path";
+import { Command } from "commander";
 
-const program = new Command();
+// ---------------------------------------------------------------------------
+// Data model
+// ---------------------------------------------------------------------------
 
-const TODO_FILE = path.join(os.homedir(), ".todos.json");
-
-interface Todo {
+export interface Task {
   id: number;
-  text: string;
+  title: string;
   done: boolean;
   createdAt: string;
 }
 
-function loadTodos(): Todo[] {
-  if (!fs.existsSync(TODO_FILE)) {
-    return [];
+export interface TaskStore {
+  tasks: Task[];
+  nextId: number;
+}
+
+// ---------------------------------------------------------------------------
+// Storage helpers
+// ---------------------------------------------------------------------------
+
+const DATA_FILE = path.join(os.homedir(), ".tasks.json");
+
+export function loadTasks(): TaskStore {
+  if (!fs.existsSync(DATA_FILE)) {
+    return { tasks: [], nextId: 1 };
   }
+
+  const raw = fs.readFileSync(DATA_FILE, "utf-8");
+
+  // Handle empty or whitespace-only files gracefully
+  if (!raw.trim()) {
+    return { tasks: [], nextId: 1 };
+  }
+
+  let parsed: unknown;
   try {
-    const data = fs.readFileSync(TODO_FILE, "utf-8");
-    return JSON.parse(data) as Todo[];
-  } catch {
-    return [];
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    console.error(
+      `Warning: Failed to parse tasks file at "${DATA_FILE}". Using an empty task store instead.`
+    );
+    return { tasks: [], nextId: 1 };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    console.error(
+      `Warning: Tasks file at "${DATA_FILE}" has an invalid format. Using an empty task store instead.`
+    );
+    return { tasks: [], nextId: 1 };
+  }
+
+  const store = parsed as Partial<TaskStore>;
+
+  if (!Array.isArray(store.tasks) || typeof store.nextId !== "number") {
+    console.error(
+      `Warning: Tasks file at "${DATA_FILE}" is missing required fields. Using an empty task store instead.`
+    );
+    return { tasks: [], nextId: 1 };
+  }
+
+  return { tasks: store.tasks, nextId: store.nextId };
+}
+
+export function saveTasks(store: TaskStore): void {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// Output helpers
+// ---------------------------------------------------------------------------
+
+function outputTask(task: Task, asJson: boolean): void {
+  if (asJson) {
+    console.log(JSON.stringify(task, null, 2));
+  } else {
+    const status = task.done ? "✓" : "○";
+    console.log(`[${status}] #${task.id} ${task.title}`);
   }
 }
 
-function saveTodos(todos: Todo[]): void {
-  fs.writeFileSync(TODO_FILE, JSON.stringify(todos, null, 2), "utf-8");
-}
-
-function outputResult(data: unknown, jsonMode: boolean): void {
-  if (jsonMode) {
-    console.log(JSON.stringify(data, null, 2));
+function outputTasks(tasks: Task[], asJson: boolean): void {
+  if (asJson) {
+    console.log(JSON.stringify(tasks, null, 2));
+  } else {
+    if (tasks.length === 0) {
+      console.log("No tasks found.");
+      return;
+    }
+    for (const task of tasks) {
+      outputTask(task, false);
+    }
   }
 }
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+const program = new Command();
 
 program
-  .name("todo")
-  .description("A simple CLI todo manager")
+  .name("tasks")
+  .description("A simple file-backed task manager with JSON output support")
   .version("1.0.0");
 
-// ADD command
+// -- add --------------------------------------------------------------------
+
 program
-  .command("add <text>")
-  .description("Add a new todo item")
+  .command("add <title>")
+  .description("Add a new task")
   .option("--json", "Output result as JSON")
-  .action((text: string, options: { json?: boolean }) => {
-    const todos = loadTodos();
-    const newTodo: Todo = {
-      id: todos.length > 0 ? Math.max(...todos.map((t) => t.id)) + 1 : 1,
-      text,
+  .action((title: string, options: { json?: boolean }) => {
+    const store = loadTasks();
+    const task: Task = {
+      id: store.nextId,
+      title,
       done: false,
       createdAt: new Date().toISOString(),
     };
-    todos.push(newTodo);
-    saveTodos(todos);
-
-    if (options.json) {
-      outputResult({ success: true, todo: newTodo }, true);
-    } else {
-      console.log(`Added: "${text}" (id: ${newTodo.id})`);
-    }
+    store.tasks.push(task);
+    store.nextId += 1;
+    saveTasks(store);
+    outputTask(task, !!options.json);
   });
 
-// LIST command
+// -- list -------------------------------------------------------------------
+
 program
   .command("list")
-  .description("List all todo items")
+  .description("List all tasks")
   .option("--json", "Output result as JSON")
   .action((options: { json?: boolean }) => {
-    const todos = loadTodos();
-
-    if (options.json) {
-      outputResult({ todos }, true);
-    } else {
-      if (todos.length === 0) {
-        console.log("No todos found.");
-        return;
-      }
-      todos.forEach((todo) => {
-        const status = todo.done ? "[x]" : "[ ]";
-        console.log(`${status} ${todo.id}. ${todo.text}`);
-      });
-    }
+    const store = loadTasks();
+    outputTasks(store.tasks, !!options.json);
   });
 
-// DONE command
+// -- done -------------------------------------------------------------------
+
 program
   .command("done <id>")
-  .description("Mark a todo item as done")
+  .description("Mark a task as done")
   .option("--json", "Output result as JSON")
-  .action((idStr: string, options: { json?: boolean }) => {
-    const id = parseInt(idStr, 10);
-    if (isNaN(id)) {
+  .action((id: string, options: { json?: boolean }) => {
+    const taskId = parseInt(id, 10);
+
+    if (!Number.isInteger(taskId)) {
+      const errorMessage = `Invalid task id "${id}", must be an integer`;
       if (options.json) {
-        outputResult({ success: false, error: "Invalid id provided" }, true);
+        console.log(JSON.stringify({ error: errorMessage }, null, 2));
       } else {
-        console.error("Error: Invalid id provided.");
+        console.error(errorMessage);
       }
       process.exit(1);
     }
 
-    const todos = loadTodos();
-    const todo = todos.find((t) => t.id === id);
+    const store = loadTasks();
+    const task = store.tasks.find((t) => t.id === taskId);
 
-    if (!todo) {
+    if (!task) {
+      const errorMessage = `Task #${taskId} not found`;
       if (options.json) {
-        outputResult({ success: false, error: `Todo with id ${id} not found` }, true);
+        console.log(JSON.stringify({ error: errorMessage }, null, 2));
       } else {
-        console.error(`Error: Todo with id ${id} not found.`);
+        console.error(errorMessage);
       }
       process.exit(1);
     }
 
-    todo.done = true;
-    saveTodos(todos);
-
-    if (options.json) {
-      outputResult({ success: true, todo }, true);
-    } else {
-      console.log(`Marked as done: "${todo.text}" (id: ${todo.id})`);
-    }
+    task.done = true;
+    saveTasks(store);
+    outputTask(task, !!options.json);
   });
 
 program.parse(process.argv);
