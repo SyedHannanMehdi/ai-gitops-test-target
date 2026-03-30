@@ -1,148 +1,161 @@
-# ai-gitops-test-target
+# ai-gitops-test-target — Todo CLI
 
-A simple file-backed CLI task manager with `--json` output for scripting and automation.
-
----
+A simple command-line todo manager written in TypeScript.
 
 ## Installation
 
 ```bash
 npm install
-npm run build        # compiles TypeScript → dist/
+npm run build
+npm link   # makes `todo` available globally
+```
+
+## Usage
+
+### Add a todo item
+
+```bash
+todo add "Buy milk"
+# Added: [1] Buy milk
+```
+
+### List all todo items
+
+```bash
+todo list
+# [ ] [1] Buy milk
+# [ ] [2] Write tests
+```
+
+### Mark a todo item as done
+
+```bash
+todo done 1
+# Done: [1] Buy milk
 ```
 
 ---
 
-## Running the CLI
+## JSON Output (`--json` flag)
 
-There are three ways to invoke the task manager:
+All commands support the `--json` flag for machine-readable output. This is useful for scripting and automation pipelines.
 
-### 1. After building (recommended for production use)
+The JSON envelope always has the shape:
 
-```bash
-node dist/index.js <command> [options]
-```
-
-### 2. Directly with ts-node (no build step required)
-
-```bash
-npx ts-node src/index.ts <command> [options]
-```
-
-### 3. As a global `tasks` binary
-
-If you want to use the short `tasks` alias, link the package globally first:
-
-```bash
-npm link          # or: npm install -g .
-```
-
-Then you can call:
-
-```bash
-tasks <command> [options]
-```
-
-> **Note:** Without `npm link` / `npm install -g`, the `tasks` binary is not on your PATH.
-> Use `node dist/index.js …` or `npx ts-node src/index.ts …` instead.
-
----
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `add <title>` | Add a new task |
-| `list` | List all tasks |
-| `done <id>` | Mark task `<id>` as done |
-
-Every command accepts a `--json` flag for machine-readable output.
-
----
-
-## Usage examples
-
-### Plain text output
-
-```bash
-# After npm link / npm install -g
-tasks add "Write unit tests"
-tasks list
-tasks done 1
-
-# Without global install
-node dist/index.js add "Write unit tests"
-node dist/index.js list
-node dist/index.js done 1
-```
-
-### JSON output (`--json`)
-
-```bash
-node dist/index.js add "Deploy to staging" --json
-# {
-#   "id": 1,
-#   "title": "Deploy to staging",
-#   "done": false,
-#   "createdAt": "2024-01-15T10:30:00.000Z"
-# }
-
-node dist/index.js list --json
-# [
-#   { "id": 1, "title": "Deploy to staging", "done": false, "createdAt": "..." }
-# ]
-
-node dist/index.js done 1 --json
-# {
-#   "id": 1,
-#   "title": "Deploy to staging",
-#   "done": true,
-#   "createdAt": "..."
-# }
-```
-
-### Scripting example (bash)
-
-```bash
-# Add a task and capture its id
-TASK=$(node dist/index.js add "Run smoke tests" --json)
-ID=$(echo "$TASK" | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).id))")
-
-# Mark it done
-node dist/index.js done "$ID" --json
-```
-
----
-
-## JSON schemas
-
-### Task object
-
-```jsonc
+```json
 {
-  "id":        1,           // integer — unique task identifier
-  "title":     "string",    // task description
-  "done":      false,       // boolean — completion status
-  "createdAt": "ISO 8601"   // creation timestamp
+  "success": true | false,
+  "data": <command-specific payload>,
+  "error": "<message>"   // only present when success is false
 }
 ```
 
-### Error object (non-zero exit)
+### `add --json`
 
-```jsonc
+```bash
+todo add "Buy milk" --json
+```
+
+```json
 {
-  "error": "Human-readable error message"
+  "success": true,
+  "data": {
+    "id": 1,
+    "text": "Buy milk",
+    "done": false,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### `list --json`
+
+```bash
+todo list --json
+```
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "text": "Buy milk",
+      "done": true,
+      "createdAt": "2024-01-15T10:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "text": "Write tests",
+      "done": false,
+      "createdAt": "2024-01-15T11:00:00.000Z"
+    }
+  ]
+}
+```
+
+Empty list:
+
+```json
+{
+  "success": true,
+  "data": []
+}
+```
+
+### `done --json`
+
+```bash
+todo done 1 --json
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "text": "Buy milk",
+    "done": true,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+#### Error responses
+
+When something goes wrong (e.g. item not found), the process exits with a non-zero code and outputs:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": "Todo item with ID 99 not found"
 }
 ```
 
 ---
+
+## Scripting examples
+
+```bash
+# Get the ID of the newly added item
+ID=$(todo add "Deploy to prod" --json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).data.id))")
+
+# Count pending items
+todo list --json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).data.filter(i=>!i.done).length))"
+
+# Use with jq
+todo list --json | jq '.data[] | select(.done == false) | .text'
+todo add "New task" --json | jq '.data.id'
+```
 
 ## Development
 
 ```bash
-npm test            # run Jest test suite
-npm run coverage    # run tests with coverage report
-npm run build       # compile TypeScript
+npm run build   # compile TypeScript → dist/
+npm test        # run Jest test suite
 ```
 
-Data is stored in `~/.tasks.json`.
+## Data storage
+
+Todo items are persisted to `~/.todo-items.json`.
