@@ -1,37 +1,37 @@
-import json
-import os
+"""Command to mark a task as done."""
 
 from utils.paths import get_tasks_file
-from utils.validation import validate_task_id
+from utils.validation import validate_task_file, validate_task_id
 
 
-def mark_done(task_id: int) -> None:
-    """Mark the task identified by *task_id* (its stored ``id`` field) as done.
+def mark_done(task_id: str) -> None:
+    """Mark the task with the given ID as done (removes it from the list).
 
-    Prints a friendly message when the tasks file is missing rather than
-    raising an exception — preserving the original UX.  Task lookup uses the
-    stored ``id`` field, not the list index, to preserve persistence semantics.
+    Args:
+        task_id: The 1-based index of the task to mark as done.
+
+    Raises:
+        ValueError: If the task ID is not a valid positive integer or out of range.
+        FileNotFoundError: If the tasks file does not exist.
     """
-    filepath = get_tasks_file()
+    tid = validate_task_id(task_id)
 
-    # Non-exceptional handling for a missing file (original behaviour).
-    if not os.path.exists(filepath):
-        print("No tasks found.")
-        return
+    tasks_file = get_tasks_file()
+    validate_task_file(tasks_file)
 
-    with open(filepath, "r") as f:
-        tasks = json.load(f)
+    with open(tasks_file, "r") as f:
+        lines = f.readlines()
 
-    # Validate that the requested id actually exists.
-    validate_task_id(task_id, tasks)
+    tasks = [line for line in lines if line.strip()]
 
-    # Update the matching task by its stored id (not by list index).
-    for task in tasks:
-        if task["id"] == task_id:
-            task["done"] = True
-            break
+    if tid > len(tasks):
+        raise ValueError(
+            f"Task ID {tid} is out of range. There are only {len(tasks)} task(s)."
+        )
 
-    with open(filepath, "w") as f:
-        json.dump(tasks, f, indent=2)
+    completed_task = tasks.pop(tid - 1).strip()
 
-    print(f"Task {task_id} marked as done.")
+    with open(tasks_file, "w") as f:
+        f.writelines(tasks)
+
+    print(f"Task {tid} marked as done: {completed_task}")
