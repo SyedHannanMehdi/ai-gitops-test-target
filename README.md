@@ -1,54 +1,67 @@
 # task-cli
 
-A simple command-line task manager.
+A simple command-line task manager written in Python.
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install pyyaml
 ```
 
 ## Usage
 
 ```bash
-python task.py add "Buy groceries"
+# List tasks
 python task.py list
-python task.py done 1
+
+# Add a task
+python task.py add "Buy groceries"
+python task.py add "Deploy hotfix" --priority high
 ```
 
 ## Configuration
 
-task-cli stores its configuration at:
+The configuration file lives at:
 
 ```
 ~/.config/task-cli/config.yaml
 ```
 
-If the file does not exist, it is **automatically created** with sensible defaults on first run.
+**If the file does not exist**, `task-cli` will automatically create it with
+sensible defaults the first time you run any command. You will see a short
+notice on stderr:
+
+```
+[task-cli] Config file not found at /home/you/.config/task-cli/config.yaml. Creating default configuration...
+[task-cli] Default config written to /home/you/.config/task-cli/config.yaml.
+```
 
 ### Default configuration
 
 ```yaml
-tasks_file: /home/<your-username>/.config/task-cli/tasks.json
-default_priority: medium
+storage:
+  path: ~/.local/share/task-cli/tasks.json
+
+display:
+  date_format: "%Y-%m-%d"
+  show_completed: false
+
+defaults:
+  priority: medium
 ```
 
-> **Note:** `tasks_file` is written as an absolute path (e.g. `/home/alice/.config/task-cli/tasks.json`).
-> The `~` shorthand is **not** used in the generated file so that the path is unambiguous across tools.
+### Options
 
-### Configuration keys
+| Key | Description | Default |
+|-----|-------------|---------|
+| `storage.path` | Where tasks are stored (JSON) | `~/.local/share/task-cli/tasks.json` |
+| `display.date_format` | Python `strftime` format for dates | `%Y-%m-%d` |
+| `display.show_completed` | Whether completed tasks are shown in `list` | `false` |
+| `defaults.priority` | Priority assigned when `--priority` is omitted | `medium` |
 
-| Key | Default (expanded) | Description |
-|-----|--------------------|-------------|
-| `tasks_file` | `$HOME/.config/task-cli/tasks.json` | Where tasks are stored |
-| `default_priority` | `medium` | Priority assigned to new tasks when none is specified |
+## Running tests
 
-### Error handling
-
-| Situation | Behaviour |
-|-----------|-----------|
-| Config file missing | Auto-created with defaults; execution continues normally |
-| Config file is empty | Defaults are used; execution continues normally |
-| Config file contains invalid YAML | Friendly error message printed to stderr; exit code 1 |
-| Config file root is not a YAML mapping | Friendly error message printed to stderr; exit code 1 |
-| Unknown CLI command | Friendly error message printed to stderr; exit code 1 |
+```bash
+pip install pytest pyyaml
+pytest tests/
+```
